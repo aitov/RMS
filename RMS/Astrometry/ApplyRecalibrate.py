@@ -132,12 +132,33 @@ def recalibrateFF(
     # If there more stars than a set limit, sample them randomly using the same seed for reproducibility
     if not ignore_max_stars and len(star_dict_ff[jd]) > config.recalibration_max_stars:
 
-        # Create a generator with a fixed random seed
-        rng = np.random.default_rng(seed=0)
-
-        # Sample the stars and store them in a copy of the star dictionary
+        # Make a copy so that the original star dictionary is not modified
         star_dict_ff = copy.deepcopy(star_dict_ff)
-        star_dict_ff = {jd: rng.choice(star_dict_ff[jd], config.recalibration_max_stars, replace=False)}
+
+        # Python 3+
+        if hasattr(np.random, 'default_rng'):
+
+            # Use the newer Generator-based RNG
+            rng = np.random.default_rng(seed=0)
+
+            # Sample the stars and store them in a copy of the star dictionary
+            star_dict_ff = {jd: rng.choice(star_dict_ff[jd], config.recalibration_max_stars, replace=False)}
+        
+        # Python 2
+        else:
+
+            # Use the older RandomState-based RNG
+            rng = np.random.RandomState(seed=0)
+
+            # RandomState.choice requires indices for complex data types
+            indices = rng.choice(
+                len(star_dict_ff[jd]),
+                config.recalibration_max_stars,
+                replace=False
+            )
+
+            # Use the indices to select the stars
+            star_dict_ff[jd] = [star_dict_ff[jd][i] for i in indices]
 
 
     # A list of matching radiuses to try
@@ -349,7 +370,7 @@ def recalibrateFF(
 
         ### plot for checking fit quality ###
         # if date2JD(*FFfile.getMiddleTimeFF("FF_HR000N_20201214_203429_089_0416000.fits", config.fps)) == jd:
-        #     plt.title(f'F_HR000K_20201213_225055_929_0631040.fits')
+        #     plt.title('F_HR000K_20201213_225055_929_0631040.fits')
         #     plt.scatter(*matched_stars[jd][0][:,:2].T[::-1], label='matched')
         #     plt.scatter(*np.array(star_dict_ff[jd])[:,:2].T[::-1],c='r',s=1, label='detected')
         #     plt.legend()
