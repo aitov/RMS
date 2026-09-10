@@ -1254,7 +1254,7 @@ class BufferedCapture(Process):
                 storage_branch = (
                     "t. ! queue2 max-size-buffers=150 max-size-bytes=2097152 max-size-time=5000000000 ! "
                     "videoconvert ! video/x-raw,format=I420 ! "
-                    "x264enc speed-preset=superfast pass=qual quantizer=18 key-int-max=30 ! h264parse ! "
+                    "x264enc speed-preset=superfast pass=qual quantizer=18 ! h264parse ! "
                     "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
                     ).format(self.config.raw_video_bitrate, int(segment_duration_sec*1e9))
             else:
