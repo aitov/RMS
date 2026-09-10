@@ -1231,9 +1231,12 @@ class BufferedCapture(Process):
             extra_props = self.config.gst_v4l2_extra_properties
             extra_props_str = " {:s}".format(extra_props) if extra_props else ""
 
+            input_caps = self.config.gst_v4l2_input_caps
+            input_caps_str = "{:s} ! ".format(input_caps) if input_caps else ""
+
             source_to_tee = (
-                "v4l2src device=\"{:s}\"{:s} ! tee name=t"
-                ).format(device_path, extra_props_str)
+                "v4l2src device=\"{:s}\"{:s} ! {:s}tee name=t"
+                ).format(device_path, extra_props_str, input_caps_str)
 
             # Branch for processing: no decoder needed, raw frames just go through the
             # optional scale/crop, then get converted to the requested output format.
