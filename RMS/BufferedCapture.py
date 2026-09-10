@@ -939,7 +939,9 @@ class BufferedCapture(Process):
             segment_time = UTCFromTimestamp.utcfromtimestamp(self.last_segment_savetime)
             self.last_segment_savetime = time.time()
 
-        segment_filename = segment_time.strftime("{}_%Y%m%d_%H%M%S_%f_video.mkv".format(self.config.stationID))
+        container_ext = getattr(self, 'raw_container_ext', 'mkv')
+        segment_filename = segment_time.strftime(
+            "{}_%Y%m%d_%H%M%S_%f_video.{}".format(self.config.stationID, container_ext))
         segment_subpath = os.path.join(self.config.data_dir, self.config.video_dir, segment_time.strftime("%Y/%Y%m%d-%j/%Y%m%d-%j_%H"))
 
         # Create full path for the segment
@@ -1107,8 +1109,17 @@ class BufferedCapture(Process):
     def createGstreamDevice(self, video_format, gst_decoder='decodebin', 
                             video_file_dir=None, segment_duration_sec=30, max_retries=5, retry_interval=5):
         """
-        Creates a GStreamer pipeline for capturing video from an RTSP source and 
-        initializes playback with specific configurations.
+        Creates a GStreamer pipeline for capturing video and initializes playback with
+        specific configurations.
+
+        Two source types are supported, auto-detected from self.config.deviceID:
+            - RTSP (IP camera, h264-compressed): deviceID is a rtsp:// URL. The pipeline
+              uses rtspsrc ! rtph264depay ! h264parse, and (if raw video saving is enabled)
+              stores segments as h264-in-matroska (.mkv) without re-encoding.
+            - Local/MIPI raw device (e.g. deviceID="/dev/video0"): the pipeline uses
+              v4l2src directly (no depay/decoder stage, since the frames are already
+              uncompressed video/x-raw). If raw video saving is enabled, frames are
+              encoded with x264enc and stored as h264-in-mp4 (.mp4) segments.
 
         The method also sets an initial timestamp for the pipeline's operation.
 
@@ -1117,7 +1128,8 @@ class BufferedCapture(Process):
                 e.g., 'BGR', 'GRAY8', etc.
             
         Keyword arguments:
-            gst_decoder: [str] The gst_decoder to use for the Gstreamer video stream. Default is 'decodebin'.
+            gst_decoder: [str] The gst_decoder to use for the Gstreamer video stream when the
+                source is RTSP. Default is 'decodebin'. Ignored for local/MIPI raw devices.
             video_file_dir: [str] The directory where the raw video stream should be saved. 
                 If None, the raw stream will not be saved to disk. Default is None.
             segment_duration_sec: [int] The duration of each video segment in seconds. 
@@ -1130,29 +1142,15 @@ class BufferedCapture(Process):
                 which can be used for further processing of the captured video frames.
         """
 
-        device_url = self.extractRtspUrl(self.config.deviceID)
+        # RTSP (IP camera, h264-compressed) sources are identified by a rtsp:// URL in
+        # deviceID. Anything else (e.g. "/dev/video0") is treated as a local raw device
+        # (V4L2/MIPI camera) fed directly via v4l2src - no depay/decoder is needed since
+        # the frames are already uncompressed video/x-raw.
+        is_rtsp = "rtsp" in str(self.config.deviceID)
 
-        # Common timeout settings for both UDP and TCP
-        # All streams need tcp-timeout since RTSP control always uses TCP
-        common_timeouts = "retry=5 timeout=5000000 tcp-timeout=5000000 teardown-timeout=3000000"
-        
-        if self.config.protocol == 'udp':
-            protocol_str = f"protocols=udp {common_timeouts}"
-        else:
-            protocol_str = f"protocols=tcp {common_timeouts}"
-
-        # Define the source up to the point where we want to branch off
-        source_to_tee = (
-            # udp-buffer-size: per-socket RTP receive buffer. rtspsrc defaults to
-            # 512KB, which can overflow during bitrate bursts and shows
-            # up as UDP RcvbufErrors -> dropped frames. The configured size
-            # (default 16MB) gives bursts room.
-            # NOTE: net.core.rmem_max must be >= this value (see Scripts/UpdateBuffers.sh)
-            # or the kernel clamps it back. Only affects the UDP transport path.
-            "rtspsrc name=src buffer-mode=1 udp-buffer-size={:d} {:s} "
-            "location=\"{:s}\" ! "
-            "rtph264depay ! h264parse ! tee name=t"
-            ).format(self.config.udp_buffer_size, protocol_str, device_url)
+        # Track how the storage branch (if any) muxes/encodes segments, so moveSegment()
+        # can name files with the matching container extension.
+        self.raw_container_ext = "mkv"
 
         # Optionally scale and/or crop the source video before further processing.
         # videoscale/videocrop run on raw decoded frames, ahead of videoconvert.
@@ -1171,33 +1169,93 @@ class BufferedCapture(Process):
                 log.warning("video_crop ignored: malformed value %r (expected e.g. "
                             "'top=N bottom=N left=N right=N', non-negative ints)", self.config.video_crop)
 
-        # Branch for processing
         queue_size = self.config.gst_queue_size
-        processing_branch = (
-            "t. ! queue ! {:s} ! "
-            "queue leaky=downstream max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! {:s}{:s}"
-            "videoconvert ! video/x-raw,format={:s} ! "
-            "queue max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! "
-            "appsink max-buffers={:d} drop=true sync=0 name=appsink"
-            ).format(gst_decoder, queue_size, video_scale, video_crop, video_format, queue_size, queue_size)
-        
-         # Branch for storage - if video_file_dir is not None, save the raw stream to a file
-        if video_file_dir is not None:
-            
-            # The video will be split into segments of segment_duration_sec seconds
-            # The splitmuxsink will save the segments to video_file_dir
-            # The splitmuxsink will use the matroskamux muxer
-            # The splitmuxsink will use the format-location-full signal to name and move each segment
-            # queue2 smooths out the writes, but doesn't wait until the buffers fill up for writing
-            storage_branch = (
-                "t. ! queue2 max-size-buffers=150 max-size-bytes=2097152 max-size-time=5000000000 ! "
-                "h264parse ! "
-                "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=matroskamux"
-                ).format(int(segment_duration_sec*1e9))
 
-        # Otherwise, skip saving the raw stream to disk
+        if is_rtsp:
+            device_url = self.extractRtspUrl(self.config.deviceID)
+
+            # Common timeout settings for both UDP and TCP
+            # All streams need tcp-timeout since RTSP control always uses TCP
+            common_timeouts = "retry=5 timeout=5000000 tcp-timeout=5000000 teardown-timeout=3000000"
+
+            if self.config.protocol == 'udp':
+                protocol_str = f"protocols=udp {common_timeouts}"
+            else:
+                protocol_str = f"protocols=tcp {common_timeouts}"
+
+            # Define the source up to the point where we want to branch off
+            source_to_tee = (
+                # udp-buffer-size: per-socket RTP receive buffer. rtspsrc defaults to
+                # 512KB, which can overflow during bitrate bursts and shows
+                # up as UDP RcvbufErrors -> dropped frames. The configured size
+                # (default 16MB) gives bursts room.
+                # NOTE: net.core.rmem_max must be >= this value (see Scripts/UpdateBuffers.sh)
+                # or the kernel clamps it back. Only affects the UDP transport path.
+                "rtspsrc name=src buffer-mode=1 udp-buffer-size={:d} {:s} "
+                "location=\"{:s}\" ! "
+                "rtph264depay ! h264parse ! tee name=t"
+                ).format(self.config.udp_buffer_size, protocol_str, device_url)
+
+            # Branch for processing
+            processing_branch = (
+                "t. ! queue ! {:s} ! "
+                "queue leaky=downstream max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! {:s}{:s}"
+                "videoconvert ! video/x-raw,format={:s} ! "
+                "queue max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! "
+                "appsink max-buffers={:d} drop=true sync=0 name=appsink"
+                ).format(gst_decoder, queue_size, video_scale, video_crop, video_format, queue_size, queue_size)
+
+            # Branch for storage - if video_file_dir is not None, save the raw stream to a file
+            if video_file_dir is not None:
+
+                # The video will be split into segments of segment_duration_sec seconds
+                # The splitmuxsink will save the segments to video_file_dir
+                # The splitmuxsink will use the matroskamux muxer
+                # The splitmuxsink will use the format-location-full signal to name and move each segment
+                # queue2 smooths out the writes, but doesn't wait until the buffers fill up for writing
+                storage_branch = (
+                    "t. ! queue2 max-size-buffers=150 max-size-bytes=2097152 max-size-time=5000000000 ! "
+                    "h264parse ! "
+                    "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=matroskamux"
+                    ).format(int(segment_duration_sec*1e9))
+
+            # Otherwise, skip saving the raw stream to disk
+            else:
+                storage_branch = ""
+
         else:
-            storage_branch = ""
+            # Local/MIPI raw device via v4l2src (e.g. deviceID="/dev/video0"). The device
+            # already produces uncompressed video/x-raw frames, so there is no depayloader
+            # or decoder stage - the frames go straight to a tee.
+            device_path = str(self.config.deviceID)
+            extra_props = self.config.gst_v4l2_extra_properties
+            extra_props_str = " {:s}".format(extra_props) if extra_props else ""
+
+            source_to_tee = (
+                "v4l2src device=\"{:s}\"{:s} ! tee name=t"
+                ).format(device_path, extra_props_str)
+
+            # Branch for processing: no decoder needed, raw frames just go through the
+            # optional scale/crop, then get converted to the requested output format.
+            processing_branch = (
+                "t. ! queue leaky=downstream max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! {:s}{:s}"
+                "videoconvert ! video/x-raw,format={:s} ! "
+                "queue max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! "
+                "appsink max-buffers={:d} drop=true sync=0 name=appsink"
+                ).format(queue_size, video_scale, video_crop, video_format, queue_size, queue_size)
+
+            # Branch for storage - raw frames are compressed with x264enc before muxing to
+            # mp4, since saving uncompressed raw video would use excessive disk space.
+            if video_file_dir is not None:
+                self.raw_container_ext = "mp4"
+                storage_branch = (
+                    "t. ! queue2 max-size-buffers=150 max-size-bytes=2097152 max-size-time=5000000000 ! "
+                    "videoconvert ! video/x-raw,format=I420 ! "
+                    "x264enc tune=zerolatency speed-preset=ultrafast bitrate={:d} ! h264parse ! "
+                    "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
+                    ).format(self.config.raw_video_bitrate, int(segment_duration_sec*1e9))
+            else:
+                storage_branch = ""
 
          # Combine all parts of the pipeline
         pipeline_str = "{:s} {:s} {:s}".format(source_to_tee, processing_branch, storage_branch)
@@ -1862,6 +1920,7 @@ class BufferedCapture(Process):
             self.time_for_drop = 1.5*(1.0/self.config.fps)
             self.device = None
             self.pipeline = None
+            self.raw_container_ext = "mkv"
             self.start_timestamp = 0
             self.frame_shape = None
             self.convert_to_gray = not (self.daytime_mode.value if self.daytime_mode is not None else False)

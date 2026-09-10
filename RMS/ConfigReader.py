@@ -213,7 +213,18 @@ class Config:
         self.gst_colorspace = "BGR"
 
         # Decoder for the gstreamer media backend (e.g. decodebin, avdec_h264, nvh264dec)
+        # Only used for compressed (e.g. RTSP/h264) sources - ignored for raw v4l2/MIPI sources.
         self.gst_decoder = "avdec_h264"
+
+        # Extra properties appended to the v4l2src element when the gstreamer media backend
+        # is used with a local/MIPI raw device (deviceID is a device path, e.g. /dev/video0,
+        # rather than an RTSP URL). E.g. "io-mode=4 brightness=128". Default: none.
+        self.gst_v4l2_extra_properties = ""
+
+        # Bitrate (kbit/s) used by the x264enc encoder when saving the raw video stream to disk
+        # (raw_video_save) for local/MIPI raw devices captured via the gstreamer media backend.
+        # RTSP sources are already h264-compressed and don't use this setting.
+        self.raw_video_bitrate = 4096
 
         # Max buffers per GStreamer queue element (lower values reduce memory usage on multi-cam systems)
         self.gst_queue_size = 100
@@ -1120,6 +1131,12 @@ def parseCapture(config, parser):
 
     if parser.has_option(section, "gst_decoder"):
         config.gst_decoder = parser.get(section, "gst_decoder")
+
+    if parser.has_option(section, "gst_v4l2_extra_properties"):
+        config.gst_v4l2_extra_properties = parser.get(section, "gst_v4l2_extra_properties").strip()
+
+    if parser.has_option(section, "raw_video_bitrate"):
+        config.raw_video_bitrate = parser.getint(section, "raw_video_bitrate")
 
     if parser.has_option(section, "gst_queue_size"):
         # Clamp to >= 1: in GStreamer max-size-buffers=0 means *unlimited*, which would
