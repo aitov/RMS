@@ -1228,15 +1228,13 @@ class BufferedCapture(Process):
             # already produces uncompressed video/x-raw frames, so there is no depayloader
             # or decoder stage - the frames go straight to a tee.
             device_path = str(self.config.deviceID)
-            extra_props = self.config.gst_v4l2_extra_properties
-            extra_props_str = " {:s}".format(extra_props) if extra_props else ""
 
             input_caps = self.config.gst_v4l2_input_caps
             input_caps_str = "{:s} ! ".format(input_caps) if input_caps else ""
 
             source_to_tee = (
-                "v4l2src device=\"{:s}\"{:s} ! {:s}tee name=t"
-                ).format(device_path, extra_props_str, input_caps_str)
+                "v4l2src io-mode=4 device=\"{:s}\" ! {:s}tee name=t"
+                ).format(device_path, input_caps_str)
 
             # Branch for processing: no decoder needed, raw frames just go through the
             # optional scale/crop, then get converted to the requested output format.
@@ -1255,7 +1253,7 @@ class BufferedCapture(Process):
                     "t. ! queue2 max-size-buffers=150 max-size-bytes=2097152 max-size-time=5000000000 ! "
                     "videoconvert ! video/x-raw,format=I420 ! "
                     "queue max-size-buffers=3 leaky=downstream ! " 
-                    "x264enc speed-preset=ultrafast pass=qual quantizer=16 bitrate={:d} ! h264parse ! "
+                    "x264enc speed-preset=ultrafast tune=zerolatency bframes=0 threads=1 bitrate={:d} ! h264parse ! "
                     "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
                     ).format(self.config.raw_video_bitrate, int(segment_duration_sec*1e9))
             else:

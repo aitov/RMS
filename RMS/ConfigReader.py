@@ -216,11 +216,6 @@ class Config:
         # Only used for compressed (e.g. RTSP/h264) sources - ignored for raw v4l2/MIPI sources.
         self.gst_decoder = "avdec_h264"
 
-        # Extra properties appended to the v4l2src element when the gstreamer media backend
-        # is used with a local/MIPI raw device (deviceID is a device path, e.g. /dev/video0,
-        # rather than an RTSP URL). E.g. "io-mode=4 brightness=128". Default: none.
-        self.gst_v4l2_extra_properties = ""
-
         # Caps filter applied directly after v4l2src, to select the native capture format/
         # resolution/framerate reported by the camera driver (e.g. what v4l2-ctl --list-formats-ext
         # shows). E.g. "video/x-raw,format=UYVY,width=1920,height=1080,framerate=30/1".
@@ -1138,9 +1133,6 @@ def parseCapture(config, parser):
 
     if parser.has_option(section, "gst_decoder"):
         config.gst_decoder = parser.get(section, "gst_decoder")
-
-    if parser.has_option(section, "gst_v4l2_extra_properties"):
-        config.gst_v4l2_extra_properties = parser.get(section, "gst_v4l2_extra_properties").strip()
 
     if parser.has_option(section, "gst_v4l2_input_caps"):
         config.gst_v4l2_input_caps = parser.get(section, "gst_v4l2_input_caps").strip()
