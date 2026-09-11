@@ -124,6 +124,65 @@ def validVideoCrop(crop_str):
     return True
 
 
+def parseLocalGstDevice(device_str):
+    """ Parse a local (non-RTSP) GStreamer "device" config value into a source element
+        string and (optionally) the raw input caps that immediately follow it.
+
+        Only two formats are accepted, and the "device" value must start with one of
+        these two GStreamer source elements:
+            - A full v4l2src source element, optionally followed by its raw input caps,
+              e.g. 'v4l2src device="/dev/video0" io-mode=4 ! video/x-raw,format=UYVY,
+              width=1920,height=1080,framerate=30/1'.
+            - A full libcamerasrc source element, optionally followed by its raw input
+              caps, e.g. 'libcamerasrc camera-name="/base/axi/pcie@120000/rp1/i2c@80000/
+              veyemvcam@3b" ! video/x-raw, width=1920, height=1080, framerate=30/1,
+              format=UYVY'.
+
+        Anything after the source element and (optional) raw caps (e.g. a user-pasted
+        videoconvert/appsink tail from a gst-launch test string) is ignored, since the
+        rest of the capture pipeline (videoconvert, tee, queue, appsink) is always built
+        by createGstreamDevice(). Any other "device" value (e.g. a bare device path with
+        no explicit source element) is rejected, so callers can fall back to OpenCV.
+
+    Arguments:
+        device_str: [str] The raw "device" config value (already confirmed not to be a
+            rtsp:// URL).
+
+    Return:
+        (source_element, input_caps): [tuple of str] source_element is the GStreamer
+            source element string (no trailing "!"). input_caps is the raw-format caps
+            string ("" if none were given inline).
+
+    Raises:
+        ValueError: if device_str does not start with a v4l2src or libcamerasrc element.
+    """
+
+    parts = [part.strip() for part in device_str.split('!') if part.strip()]
+
+    if not parts:
+        raise ValueError(
+            "Empty GStreamer device string. Expected a v4l2src or libcamerasrc element."
+            )
+
+    first = parts[0]
+
+    if not re.match(r'^(v4l2src|libcamerasrc)\b', first):
+        raise ValueError(
+            "Unsupported GStreamer device string: {!r}. Expected it to start with "
+            "'v4l2src' or 'libcamerasrc'.".format(device_str)
+            )
+
+    source_element = first
+
+    # If the segment right after the source element is raw caps, treat it as the input
+    # caps to place directly after the source. Anything past that is ignored.
+    input_caps = ''
+    if (len(parts) > 1) and parts[1].startswith('video/x-raw'):
+        input_caps = parts[1]
+
+    return source_element, input_caps
+
+
 class BufferedCapture(Process):
     """ Capture from device to buffer in memory.
     """
@@ -1116,10 +1175,15 @@ class BufferedCapture(Process):
             - RTSP (IP camera, h264-compressed): deviceID is a rtsp:// URL. The pipeline
               uses rtspsrc ! rtph264depay ! h264parse, and (if raw video saving is enabled)
               stores segments as h264-in-matroska (.mkv) without re-encoding.
-            - Local/MIPI raw device (e.g. deviceID="/dev/video0"): the pipeline uses
-              v4l2src directly (no depay/decoder stage, since the frames are already
-              uncompressed video/x-raw). If raw video saving is enabled, frames are
-              encoded with x264enc and stored as h264-in-mp4 (.mp4) segments.
+            - Local/MIPI raw device: deviceID must be a full v4l2src source element (e.g.
+              deviceID='v4l2src device="/dev/video0" io-mode=4') or a libcamerasrc source
+              element for libcamera-only cameras such as the Pi Camera Module connected
+              via CSI/MIPI. The pipeline feeds the source directly into the tee (no
+              depay/decoder stage, since the frames are already uncompressed
+              video/x-raw). See parseLocalGstDevice() for the accepted "device" formats;
+              any other value (e.g. a bare device path) raises an error so the caller can
+              fall back to OpenCV. If raw video saving is enabled, frames are encoded
+              with x264enc and stored as h264-in-mp4 (.mp4) segments.
 
         The method also sets an initial timestamp for the pipeline's operation.
 
@@ -1224,17 +1288,21 @@ class BufferedCapture(Process):
                 storage_branch = ""
 
         else:
-            # Local/MIPI raw device via v4l2src (e.g. deviceID="/dev/video0"). The device
-            # already produces uncompressed video/x-raw frames, so there is no depayloader
-            # or decoder stage - the frames go straight to a tee.
-            device_path = str(self.config.deviceID)
+            # Local/MIPI raw device via v4l2src or libcamerasrc (full v4l2src element, or a libcamerasrc element for
+            # libcamera-only cameras). The device already produces uncompressed
+            # video/x-raw frames, so there is no depayloader or decoder stage - the
+            # frames go straight to a tee. See parseLocalGstDevice() for accepted formats.
+            source_element, parsed_input_caps = parseLocalGstDevice(str(self.config.deviceID))
 
-            input_caps = self.config.gst_v4l2_input_caps
+            # The gst_v4l2_input_caps config option (legacy, kept for backwards
+            # compatibility) takes precedence if set; otherwise use the caps parsed
+            # directly out of the device string, if any were given.
+            input_caps = self.config.gst_v4l2_input_caps or parsed_input_caps
             input_caps_str = "{:s} ! ".format(input_caps) if input_caps else ""
 
             source_to_tee = (
-                "v4l2src io-mode=4 device=\"{:s}\" ! {:s}tee name=t"
-                ).format(device_path, input_caps_str)
+                "{:s} ! {:s}tee name=t"
+                ).format(source_element, input_caps_str)
 
             # Branch for processing: no decoder needed, raw frames just go through the
             # optional scale/crop, then get converted to the requested output format.
