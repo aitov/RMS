@@ -1297,8 +1297,7 @@ class BufferedCapture(Process):
             # The gst_v4l2_input_caps config option (legacy, kept for backwards
             # compatibility) takes precedence if set; otherwise use the caps parsed
             # directly out of the device string, if any were given.
-            input_caps = self.config.gst_v4l2_input_caps or parsed_input_caps
-            input_caps_str = "{:s} ! ".format(input_caps) if input_caps else ""
+            input_caps_str = "{:s} ! ".format(parsed_input_caps) if parsed_input_caps else ""
 
             source_to_tee = (
                 "{:s} ! {:s}tee name=t"
