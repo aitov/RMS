@@ -1323,13 +1323,14 @@ class BufferedCapture(Process):
 
                 if is_rpi4:
                     log.info("Using Raspberry Pi 4 hardware H.264 mp4 storage pipeline")
+                    fps = int(self.config.fps)
                     storage_branch = (
                         "t. ! queue2 max-size-buffers=150 max-size-bytes=2097152 max-size-time=5000000000 ! "
-                        "v4l2convert ! video/x-raw,format=NV12 ! "
-                        "queue max-size-buffers=3 leaky=downstream ! "
-                        "v4l2h264enc ! h264parse ! "
-                        "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
-                        ).format(self.config.raw_video_bitrate, int(segment_duration_sec*1e9))
+                        "v4l2convert ! video/x-raw,format=I420 ! "
+                        "queue max-size-buffers=30 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
+                        "v4l2h264enc extra-controls=\"controls,h264_profile=4,video_bitrate={:d},h264_i_frame_period={:d};\" ! h264parse ! "
+                        "splitmuxsink name=splitmuxsink0 async-finalize=true sync=true max-size-time={:d} muxer-factory=mp4mux"
+                        ).format(int(self.config.raw_video_bitrate), fps, int(segment_duration_sec*1e9))
                 else:
                     storage_branch = (
                         "t. ! queue2 max-size-buffers=150 max-size-bytes=2097152 max-size-time=5000000000 ! "
