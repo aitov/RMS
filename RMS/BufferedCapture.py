@@ -1333,7 +1333,7 @@ class BufferedCapture(Process):
                     storage_branch = (
                         "t. ! queue2 max-size-buffers=150 max-size-bytes=2097152 max-size-time=5000000000 ! "
                         "v4l2convert ! video/x-raw,format=I420 ! "
-                        "queue max-size-buffers=30 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
+                        "queue max-size-buffers=3 leaky=downstream ! "
                         "v4l2h264enc extra-controls=\"controls,h264_profile=4,video_bitrate={:d},h264_i_frame_period={:d};\" ! h264parse ! "
                         "splitmuxsink name=splitmuxsink0 async-finalize=true sync=true max-size-time={:d} muxer-factory=mp4mux"
                         ).format(bitrate_bps, fps, int(segment_duration_sec*1e9))
