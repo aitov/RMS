@@ -40,7 +40,7 @@ import errno
 import json
 
 
-from RMS.Misc import obfuscatePassword
+from RMS.Misc import obfuscatePassword, getRaspberryPiModel
 from RMS.Routines.GstreamerCapture import GstVideoFile, getStructureValue
 from RMS.Formats.ObservationSummary import addObsParam, getObservationSummaryDict
 from RMS.RawFrameSave import RawFrameSaver
@@ -1288,8 +1288,8 @@ class BufferedCapture(Process):
                 storage_branch = ""
 
         else:
-            # Local/MIPI raw device via v4l2src or libcamerasrc (full v4l2src element, or a libcamerasrc element for
-            # libcamera-only cameras). The device already produces uncompressed
+            # Local/MIPI raw device via v4l2src or libcamerasrc
+            # The device already produces uncompressed
             # video/x-raw frames, so there is no depayloader or decoder stage - the
             # frames go straight to a tee. See parseLocalGstDevice() for accepted formats.
             source_element, parsed_input_caps = parseLocalGstDevice(str(self.config.deviceID))
@@ -1312,17 +1312,32 @@ class BufferedCapture(Process):
                 "appsink max-buffers={:d} drop=true sync=0 name=appsink"
                 ).format(queue_size, video_scale, video_crop, video_format, queue_size, queue_size)
 
-            # Branch for storage - raw frames are compressed with x264enc before muxing to
-            # mp4, since saving uncompressed raw video would use excessive disk space.
+            # Branch for storage - raw frames are compressed before muxing to mp4, since
+            # saving uncompressed raw video would use excessive disk space.
+            # RPi4 has hardware video conversion and H.264 encoding support, while RPi5 is
+            # still better served by the plain x264enc path in this capture pipeline.
             if video_file_dir is not None:
                 self.raw_container_ext = "mp4"
-                storage_branch = (
-                    "t. ! queue2 max-size-buffers=150 max-size-bytes=2097152 max-size-time=5000000000 ! "
-                    "videoconvert ! video/x-raw,format=I420 ! "
-                    "queue max-size-buffers=3 leaky=downstream ! " 
-                    "x264enc speed-preset=ultrafast tune=zerolatency bframes=0 threads=1 bitrate={:d} ! h264parse ! "
-                    "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
-                    ).format(self.config.raw_video_bitrate, int(segment_duration_sec*1e9))
+                rpi_model = getRaspberryPiModel()
+                is_rpi4 = bool(rpi_model and 'raspberry pi 4' in rpi_model.lower())
+
+                if is_rpi4:
+                    log.info("Using Raspberry Pi 4 hardware H.264 mp4 storage pipeline")
+                    storage_branch = (
+                        "t. ! queue2 max-size-buffers=150 max-size-bytes=2097152 max-size-time=5000000000 ! "
+                        "v4l2convert ! video/x-raw,format=NV12 ! "
+                        "queue max-size-buffers=3 leaky=downstream ! "
+                        "v4l2h264enc bitrate={:d} ! h264parse ! "
+                        "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
+                        ).format(self.config.raw_video_bitrate, int(segment_duration_sec*1e9))
+                else:
+                    storage_branch = (
+                        "t. ! queue2 max-size-buffers=150 max-size-bytes=2097152 max-size-time=5000000000 ! "
+                        "videoconvert ! video/x-raw,format=I420 ! "
+                        "queue max-size-buffers=3 leaky=downstream ! " 
+                        "x264enc speed-preset=ultrafast tune=zerolatency bframes=0 threads=1 bitrate={:d} ! h264parse ! "
+                        "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
+                        ).format(self.config.raw_video_bitrate, int(segment_duration_sec*1e9))
             else:
                 storage_branch = ""
 

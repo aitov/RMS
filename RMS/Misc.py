@@ -937,6 +937,24 @@ def roundToSignificantDigits(x, n=2):
     return out
 
 
+def getRaspberryPiModel():
+    """Return the detected Raspberry Pi model name, or None if not running on a Pi.
+
+    Return:
+        [str or None] A model string such as 'Raspberry Pi 4 Model B Rev 1.5', or None.
+    """
+
+    try:
+        with open('/sys/firmware/devicetree/base/model', 'r') as m:
+            model = m.read().strip()
+            if 'raspberry pi' in model.lower():
+                return model
+    except (FileNotFoundError, OSError):
+        pass
+
+    return None
+
+
 def isRaspberryPi():
     """ Check if the code is running on a Raspberry Pi. 
     
@@ -944,17 +962,8 @@ def isRaspberryPi():
         [bool] True if the code is running on a Raspberry Pi, False otherwise.
     """
 
-    try:
-        # Open a file with the RPi model name
-        with open('/sys/firmware/devicetree/base/model', 'r') as m:
+    return getRaspberryPiModel() is not None
 
-            if 'raspberry pi' in m.read().lower(): 
-                return True               
-
-    except FileNotFoundError:
-        pass
-
-    return False
 
 def sanitise(unsanitised, lower = False, space_substitution = "", log_changes = False):
     """ Strictly sanitise an input string
