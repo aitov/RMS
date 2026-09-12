@@ -179,8 +179,6 @@ def parseLocalGstDevice(device_str):
     else:
         source_element = first
 
-    source_element = first
-
     # If the segment right after the source element is raw caps, treat it as the input
     # caps to place directly after the source. Anything past that is ignored.
     input_caps = ''
