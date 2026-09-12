@@ -172,12 +172,7 @@ def parseLocalGstDevice(device_str):
             "'v4l2src' or 'libcamerasrc'.".format(device_str)
             )
 
-    # Force DMABUF mode (zero-copy) to prevent V4L2 encoder crashes (STREAMON errors)
-    # due to memory starvation when the stream is split via 'tee'.
-    if first.startswith("v4l2src") and "io-mode" not in first:
-        source_element = first.replace("v4l2src", "v4l2src io-mode=4", 1)
-    else:
-        source_element = first
+    source_element = first
 
     # If the segment right after the source element is raw caps, treat it as the input
     # caps to place directly after the source. Anything past that is ignored.
