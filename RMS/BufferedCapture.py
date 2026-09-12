@@ -1327,7 +1327,7 @@ class BufferedCapture(Process):
                         "t. ! queue2 max-size-buffers=150 max-size-bytes=2097152 max-size-time=5000000000 ! "
                         "v4l2convert ! video/x-raw,format=NV12 ! "
                         "queue max-size-buffers=3 leaky=downstream ! "
-                        "v4l2h264enc bitrate={:d} ! h264parse ! "
+                        "v4l2h264enc ! h264parse ! "
                         "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
                         ).format(self.config.raw_video_bitrate, int(segment_duration_sec*1e9))
                 else:
