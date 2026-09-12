@@ -172,6 +172,13 @@ def parseLocalGstDevice(device_str):
             "'v4l2src' or 'libcamerasrc'.".format(device_str)
             )
 
+    # Force DMABUF mode (zero-copy) to prevent V4L2 encoder crashes (STREAMON errors)
+    # due to memory starvation when the stream is split via 'tee'.
+    if first.startswith("v4l2src") and "io-mode" not in first:
+        source_element = first.replace("v4l2src", "v4l2src io-mode=4", 1)
+    else:
+        source_element = first
+
     source_element = first
 
     # If the segment right after the source element is raw caps, treat it as the input
@@ -1324,13 +1331,14 @@ class BufferedCapture(Process):
                 if is_rpi4:
                     log.info("Using Raspberry Pi 4 hardware H.264 mp4 storage pipeline")
                     fps = int(self.config.fps)
+                    bitrate_bps = int(self.config.raw_video_bitrate) * 1000
                     storage_branch = (
                         "t. ! queue2 max-size-buffers=150 max-size-bytes=2097152 max-size-time=5000000000 ! "
                         "v4l2convert ! video/x-raw,format=I420 ! "
                         "queue max-size-buffers=30 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
                         "v4l2h264enc extra-controls=\"controls,h264_profile=4,video_bitrate={:d},h264_i_frame_period={:d};\" ! h264parse ! "
                         "splitmuxsink name=splitmuxsink0 async-finalize=true sync=true max-size-time={:d} muxer-factory=mp4mux"
-                        ).format(int(self.config.raw_video_bitrate), fps, int(segment_duration_sec*1e9))
+                        ).format(bitrate_bps, fps, int(segment_duration_sec*1e9))
                 else:
                     storage_branch = (
                         "t. ! queue2 max-size-buffers=150 max-size-bytes=2097152 max-size-time=5000000000 ! "
