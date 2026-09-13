@@ -1352,7 +1352,7 @@ class BufferedCapture(Process):
                     fps = int(self.config.fps)
                     bitrate_bps = int(self.config.raw_video_bitrate) * 1000
                     storage_branch = (
-                        "t. ! queue2 max-size-buffers=150 max-size-bytes=2097152 max-size-time=5000000000 ! "
+                        "t. ! queue leaky=downstream max-size-buffers=30 max-size-bytes=0 max-size-time=0 ! "
                         "v4l2convert ! video/x-raw,format=I420 ! "
                         "queue max-size-buffers=3 leaky=downstream ! "
                         "v4l2h264enc extra-controls=\"controls,h264_profile=4,video_bitrate={:d},h264_i_frame_period={:d};\" ! h264parse ! "
