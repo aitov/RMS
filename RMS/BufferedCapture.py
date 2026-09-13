@@ -1331,7 +1331,7 @@ class BufferedCapture(Process):
             video_convert = (
                 "videoconvert ! video/x-raw,format={:s} !"
                 "queue max-size-buffers={:d} max-size-bytes=0 max-size-time=0 !  "
-            ).format(video_format)
+            ).format(video_format, local_queue_size)
 
             # Branch for processing: no decoder needed, raw frames just go through the
             # optional scale/crop, then get converted to the requested output format.
