@@ -879,6 +879,10 @@ class BufferedCapture(Process):
         if frame is None:
             raise ValueError("isGrayscale() called with frame=None")
 
+        # If the camera configuration is natively UYVY, we can assume it's color and skip the check
+        if gself.config.gst_colorspace == 'UYVY':
+            return True
+
         # We don't explicitly check frame.shape first; instead we rely on an IndexError
         # if 'frame' is single-channel (which is inherently grayscale).
         # This is faster than an extra dimension check for most BGR GMN stations
@@ -927,6 +931,12 @@ class BufferedCapture(Process):
         # This is faster than an extra dimension check for most BGR GMN stations 
 
         try:
+            # If the camera configuration is natively UYVY, process it efficiently before RMS logic
+            if self.config.gst_colorspace == 'UYVY':
+                # Extract Y (Luma) channel: every second byte starting from index 1.
+                # Use .copy() to enforce a contiguous memory layout for safe saving and processing.
+                return frame[:, 1::2].copy()
+
             # If frame channels are not identical (color), return all 3 channels
             if not self.convert_to_gray:
                 return frame
@@ -1656,18 +1666,14 @@ class BufferedCapture(Process):
 
                     if self.config.gst_colorspace == 'GRAY8':
                         self.frame_shape = (height, width)
-                        frame = np.ndarray(shape=self.frame_shape, buffer=map_info.data, dtype=np.uint8)
                     elif self.config.gst_colorspace == 'UYVY':
                         # UYVY contains 2 bytes per pixel. Direct memory shape is (height, width * 2)
-                        self.frame_shape = (height, width)
-                        raw_shape = (height, width * 2)
-                        raw_frame = np.ndarray(shape=raw_shape, buffer=map_info.data, dtype=np.uint8)
-                        frame = raw_frame[:, 1::2]
+                        self.frame_shape = (height, width * 2)
                     else:
                         # Standard 3-channel frame (BGR/RGB)
                         self.frame_shape = (height, width, 3)
-                        frame = np.ndarray(shape=self.frame_shape, buffer=map_info.data, dtype=np.uint8)
 
+                    frame = np.ndarray(shape=self.frame_shape, buffer=map_info.data, dtype=np.uint8)
                     # Unmap the buffer
                     buffer.unmap(map_info)
                     
