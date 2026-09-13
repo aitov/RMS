@@ -1328,15 +1328,20 @@ class BufferedCapture(Process):
                 "{:s} ! {:s}tee name=t"
                 ).format(source_element, input_caps_str)
 
+            video_convert = (
+                "videoconvert ! video/x-raw,format={:s} !"
+                "queue max-size-buffers={:d} max-size-bytes=0 max-size-time=0 !  "
+            ).format(video_format)
+
             # Branch for processing: no decoder needed, raw frames just go through the
             # optional scale/crop, then get converted to the requested output format.
             # Using local_queue_size here to prevent massive buffer pool allocations.
             # for UYVY videoconvert is skipped as it supported same as for BGR
-            video_convert = "" if video_format == "UYVY" else "videoconvert ! video/x-raw,format={:s} ! ".format(video_format)
+            video_convert = "" if self.config.gst_colorspace == 'UYVY' else video_convert
+
             processing_branch = (
                 "t. ! queue leaky=downstream max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! {:s}{:s}"
                 "{:s}"
-                "queue max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! "
                 "appsink max-buffers={:d} drop=true sync=0 name=appsink"
                 ).format(local_queue_size, video_scale, video_crop, video_convert, local_queue_size, local_queue_size)
 
