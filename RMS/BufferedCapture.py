@@ -1350,7 +1350,7 @@ class BufferedCapture(Process):
                 self.raw_container_ext = "mp4"
 
                 if is_rpi4:
-                    log.info("Using Raspberry Pi 4 hardware H.264 mp4 storage pipeline")
+                    log.info("Using RPi 4 hardware H.264 mp4 storage pipeline")
                     fps = int(self.config.fps)
                     bitrate_bps = int(self.config.raw_video_bitrate) * 1000
                     storage_branch = (
@@ -1361,7 +1361,7 @@ class BufferedCapture(Process):
                         "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
                         ).format(bitrate_bps, fps, int(segment_duration_sec*1e9))
                 else:
-                    log.info("Using software H.264 mp4 storage pipeline (RPi 5 / PC)")
+                    log.info("Using RPi 5 software H.264 mp4 storage pipeline")
                     storage_branch = (
                         "t. ! queue leaky=downstream max-size-buffers=30 max-size-bytes=0 max-size-time=0 ! "
                         "videoconvert ! video/x-raw,format=I420 ! "
