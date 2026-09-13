@@ -880,7 +880,7 @@ class BufferedCapture(Process):
             raise ValueError("isGrayscale() called with frame=None")
 
         # If the camera configuration is natively UYVY, we can assume it's color and skip the check
-        if gself.config.gst_colorspace == 'UYVY':
+        if self.config.gst_colorspace == 'UYVY':
             return True
 
         # We don't explicitly check frame.shape first; instead we rely on an IndexError
