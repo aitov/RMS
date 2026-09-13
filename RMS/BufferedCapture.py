@@ -1288,6 +1288,7 @@ class BufferedCapture(Process):
                 storage_branch = ""
 
         else:
+            rpi_model = getRaspberryPiModel()
             is_rpi4 = bool(rpi_model and 'raspberry pi 4' in rpi_model.lower())
 
             # Local/MIPI raw device via v4l2src or libcamerasrc
@@ -1333,7 +1334,6 @@ class BufferedCapture(Process):
             # still better served by the plain x264enc path in this capture pipeline.
             if video_file_dir is not None:
                 self.raw_container_ext = "mp4"
-                rpi_model = getRaspberryPiModel()
 
                 if is_rpi4:
                     log.info("Using Raspberry Pi 4 hardware H.264 mp4 storage pipeline")
