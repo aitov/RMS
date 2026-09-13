@@ -1333,12 +1333,13 @@ class BufferedCapture(Process):
             # Using local_queue_size here to prevent massive buffer pool allocations.
             # for UYVY videoconvert is skipped as it supported same as for BGR
             video_convert = "" if video_format == "UYVY" else "videoconvert ! video/x-raw,format={:s} ! ".format(video_format)
+            queue_limit = "max-size-bytes=0 max-size-time=0" if is_rpi4 else ""
             processing_branch = (
-                "t. ! queue leaky=downstream max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! {:s}{:s}"
+                "t. ! queue leaky=downstream max-size-buffers={:d} {:s}! {:s}{:s}"
                 "{:s}"
                 "queue max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! "
                 "appsink max-buffers={:d} drop=true sync=0 name=appsink"
-                ).format(local_queue_size, video_scale, video_crop, video_convert, local_queue_size, local_queue_size)
+                ).format(local_queue_size, queue_limit, video_scale, video_crop, video_convert, local_queue_size, local_queue_size)
 
             # Branch for storage - raw frames are compressed before muxing to mp4, since
             # saving uncompressed raw video would use excessive disk space.
