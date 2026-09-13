@@ -881,7 +881,7 @@ class BufferedCapture(Process):
 
         # If the camera configuration is natively UYVY, we can assume it's color and skip the check
         if self.config.gst_colorspace == 'UYVY':
-            return True
+            return False
 
         # We don't explicitly check frame.shape first; instead we rely on an IndexError
         # if 'frame' is single-channel (which is inherently grayscale).
