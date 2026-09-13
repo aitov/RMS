@@ -1312,7 +1312,7 @@ class BufferedCapture(Process):
             # High values (like 100) are meant for RTSP network streams to absorb spikes.
             # On RPi 4, uncompressed raw frames (e.g., BGR) pool hundreds of megabytes
             # of continuous kernel DMA memory, triggering a 'Cannot allocate memory' crash.
-            local_queue_size = min(8, queue_size)
+            local_queue_size = min(8, queue_size) if is_rpi4 else queue_size
 
             # Inject a stable default I/O mode (mmap) for v4l2src if not overridden by the user.
             if "v4l2src" in source_element and "io-mode" not in source_element:
@@ -1333,13 +1333,12 @@ class BufferedCapture(Process):
             # Using local_queue_size here to prevent massive buffer pool allocations.
             # for UYVY videoconvert is skipped as it supported same as for BGR
             video_convert = "" if video_format == "UYVY" else "videoconvert ! video/x-raw,format={:s} ! ".format(video_format)
-            queue_limit = "max-size-bytes=0 max-size-time=0" if is_rpi4 else ""
             processing_branch = (
-                "t. ! queue leaky=downstream max-size-buffers={:d} {:s}! {:s}{:s}"
+                "t. ! queue leaky=downstream max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! {:s}{:s}"
                 "{:s}"
                 "queue max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! "
                 "appsink max-buffers={:d} drop=true sync=0 name=appsink"
-                ).format(local_queue_size, queue_limit, video_scale, video_crop, video_convert, local_queue_size, local_queue_size)
+                ).format(local_queue_size, video_scale, video_crop, video_convert, local_queue_size, local_queue_size)
 
             # Branch for storage - raw frames are compressed before muxing to mp4, since
             # saving uncompressed raw video would use excessive disk space.
