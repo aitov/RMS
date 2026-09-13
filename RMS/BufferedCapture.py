@@ -1358,7 +1358,7 @@ class BufferedCapture(Process):
                         "v4l2convert ! video/x-raw,format=I420 ! "
                         "queue max-size-buffers=3 leaky=downstream ! "
                         "v4l2h264enc extra-controls=\"controls,h264_profile=4,video_bitrate={:d},h264_i_frame_period={:d};\" ! h264parse ! "
-                        "splitmuxsink name=splitmuxsink0 async-finalize=true sync=true max-size-time={:d} muxer-factory=mp4mux"
+                        "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
                         ).format(bitrate_bps, fps, int(segment_duration_sec*1e9))
                 else:
                     log.info("Using software H.264 mp4 storage pipeline (RPi 5 / PC)")
@@ -1367,7 +1367,7 @@ class BufferedCapture(Process):
                         "videoconvert ! video/x-raw,format=I420 ! "
                         "queue max-size-buffers=3 leaky=downstream ! " 
                         "x264enc speed-preset=ultrafast tune=zerolatency bframes=0 threads=1 bitrate={:d} ! h264parse ! "
-                        "splitmuxsink name=splitmuxsink0 async-finalize=true sync=true max-size-time={:d} muxer-factory=mp4mux"
+                        "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
                         ).format(int(self.config.raw_video_bitrate), int(segment_duration_sec*1e9))
 
             else:
