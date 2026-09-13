@@ -1288,14 +1288,28 @@ class BufferedCapture(Process):
                 storage_branch = ""
 
         else:
+            is_rpi4 = bool(rpi_model and 'raspberry pi 4' in rpi_model.lower())
+
             # Local/MIPI raw device via v4l2src or libcamerasrc
             # The device already produces uncompressed
             # video/x-raw frames, so there is no depayloader or decoder stage - the
             # frames go straight to a tee. See parseLocalGstDevice() for accepted formats.
             source_element, parsed_input_caps = parseLocalGstDevice(str(self.config.deviceID))
 
-            # The gst_v4l2_input_caps config option (legacy, kept for backwards
-            # compatibility) takes precedence if set; otherwise use the caps parsed
+
+            # Cap the queue size to 4 frames for local raw devices.
+            # High values (like 100) are meant for RTSP network streams to absorb spikes.
+            # On RPi 4, uncompressed raw frames (e.g., BGR) pool hundreds of megabytes
+            # of continuous kernel DMA memory, triggering a 'Cannot allocate memory' crash.
+            local_queue_size = min(4, queue_size)
+
+            # Inject a stable default I/O mode (mmap) for v4l2src if not overridden by the user.
+            if "v4l2src" in source_element and "io-mode" not in source_element:
+                # Mode 2 (mmap) copies data safely to RAM, will set it to RPi 4
+                # Mode 4 (dmabuf/Zero-Copy) is faster for RPi 5
+                io_mode = 2 if is_rpi4 else 4
+                source_element = source_element.replace("v4l2src", "v4l2src io-mode={:d}".format(io_mode))
+
             # directly out of the device string, if any were given.
             input_caps_str = "{:s} ! ".format(parsed_input_caps) if parsed_input_caps else ""
 
@@ -1305,12 +1319,13 @@ class BufferedCapture(Process):
 
             # Branch for processing: no decoder needed, raw frames just go through the
             # optional scale/crop, then get converted to the requested output format.
+            # Using local_queue_size here to prevent massive buffer pool allocations.
             processing_branch = (
                 "t. ! queue leaky=downstream max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! {:s}{:s}"
                 "videoconvert ! video/x-raw,format={:s} ! "
                 "queue max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! "
                 "appsink max-buffers={:d} drop=true sync=0 name=appsink"
-                ).format(queue_size, video_scale, video_crop, video_format, queue_size, queue_size)
+                ).format(local_queue_size, video_scale, video_crop, video_format, local_queue_size, local_queue_size)
 
             # Branch for storage - raw frames are compressed before muxing to mp4, since
             # saving uncompressed raw video would use excessive disk space.
@@ -1319,7 +1334,6 @@ class BufferedCapture(Process):
             if video_file_dir is not None:
                 self.raw_container_ext = "mp4"
                 rpi_model = getRaspberryPiModel()
-                is_rpi4 = bool(rpi_model and 'raspberry pi 4' in rpi_model.lower())
 
                 if is_rpi4:
                     log.info("Using Raspberry Pi 4 hardware H.264 mp4 storage pipeline")
