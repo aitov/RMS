@@ -1314,6 +1314,13 @@ class BufferedCapture(Process):
             # of continuous kernel DMA memory, triggering a 'Cannot allocate memory' crash.
             local_queue_size = min(8, queue_size)
 
+            # Inject a stable default I/O mode (mmap) for v4l2src if not overridden by the user.
+            if "v4l2src" in source_element and "io-mode" not in source_element:
+                # Mode 2 (mmap) copies data safely to RAM, will set it to RPi 4
+                # Mode 4 (dmabuf/Zero-Copy) is faster for RPi 5
+                io_mode = 2 if is_rpi4 else 4
+                source_element = source_element.replace("v4l2src", "v4l2src io-mode={:d}".format(io_mode))
+
             # directly out of the device string, if any were given.
             input_caps_str = "{:s} ! ".format(parsed_input_caps) if parsed_input_caps else ""
 
