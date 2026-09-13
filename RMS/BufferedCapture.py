@@ -1312,7 +1312,7 @@ class BufferedCapture(Process):
             # High values (like 100) are meant for RTSP network streams to absorb spikes.
             # On RPi 4, uncompressed raw frames (e.g., BGR) pool hundreds of megabytes
             # of continuous kernel DMA memory, triggering a 'Cannot allocate memory' crash.
-            local_queue_size = min(4, queue_size)
+            local_queue_size = min(8, queue_size)
 
             # Inject a stable default I/O mode (mmap) for v4l2src if not overridden by the user.
             if "v4l2src" in source_element and "io-mode" not in source_element:
