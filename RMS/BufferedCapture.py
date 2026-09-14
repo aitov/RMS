@@ -1322,7 +1322,7 @@ class BufferedCapture(Process):
             input_caps_str = "{:s} ! ".format(parsed_input_caps) if parsed_input_caps else ""
 
             source_to_tee = (
-                "{:s} ! {:s} ! identity single-segment=true ! tee name=t"
+                "{:s} ! {:s}identity single-segment=true ! tee name=t"
                 ).format(source_element, input_caps_str)
 
             video_convert = (
