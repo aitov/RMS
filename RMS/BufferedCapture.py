@@ -131,7 +131,7 @@ def parseLocalGstDevice(device_str):
         Only two formats are accepted, and the "device" value must start with one of
         these two GStreamer source elements:
             - A full v4l2src source element, optionally followed by its raw input caps,
-              e.g. 'v4l2src io-mode=4 device="/dev/video0" ! video/x-raw,format=UYVY,
+              e.g. 'v4l2src device="/dev/video0" io-mode=4 ! video/x-raw,format=UYVY,
               width=1920,height=1080,framerate=30/1'.
             - A full libcamerasrc source element, optionally followed by its raw input
               caps, e.g. 'libcamerasrc camera-name="/base/axi/pcie@120000/rp1/i2c@80000/
@@ -1316,13 +1316,13 @@ class BufferedCapture(Process):
 
             # Inject a stable default I/O mode (mmap) for v4l2src if not overridden by the user.
             if "v4l2src" in source_element and "io-mode" not in source_element:
-                source_element = source_element.replace("v4l2src", "v4l2src io-mode=2 extra-controls=\"c,min_buffers_for_capture=2\"")
+                source_element = source_element.replace("v4l2src", "v4l2src io-mode=2")
 
             # directly out of the device string, if any were given.
             input_caps_str = "{:s} ! ".format(parsed_input_caps) if parsed_input_caps else ""
 
             source_to_tee = (
-                "{:s} ! {:s}tee name=t"
+                "{:s} ! {:s} ! identity single-segment=true ! tee name=t"
                 ).format(source_element, input_caps_str)
 
             video_convert = (
@@ -1339,8 +1339,8 @@ class BufferedCapture(Process):
             processing_branch = (
                 "t. ! queue leaky=downstream max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! {:s}{:s}"
                 "{:s}"
-                "appsink max-buffers=2 drop=true sync=0 name=appsink"
-                ).format(local_queue_size, video_scale, video_crop, video_convert, local_queue_size)
+                "appsink max-buffers={:d} drop=true sync=0 name=appsink"
+                ).format(local_queue_size, video_scale, video_crop, video_convert, local_queue_size, local_queue_size)
 
             # Branch for storage - raw frames are compressed before muxing to mp4, since
             # saving uncompressed raw video would use excessive disk space.
