@@ -39,6 +39,7 @@ import socket
 import errno
 import json
 
+from keras.src.layers.core import identity
 
 from RMS.Misc import obfuscatePassword, getRaspberryPiModel
 from RMS.Routines.GstreamerCapture import GstVideoFile, getStructureValue
@@ -1313,10 +1314,10 @@ class BufferedCapture(Process):
 
             # directly out of the device string, if any were given.
             input_caps_str = "{:s} ! ".format(parsed_input_caps) if parsed_input_caps else ""
-
+            identity = "identity drop-allocation=true ! " if is_rpi4 else ""
             video_convert = (
-                "videoconvert ! video/x-raw,format={:s} !"
-                ).format(video_format)
+                "{:s}videoconvert ! video/x-raw,format={:s} ! "
+                ).format(identity, video_format)
 
             # If colorspace is UYVY we don't need convertion to BGR as this format already supported by function handleGrayscaleConversion
             # but for RPi4 we need to add videoconvert to avoid memory allocation issues with large queue sizes (like 100 or 150)
@@ -1347,6 +1348,7 @@ class BufferedCapture(Process):
                     fps = int(self.config.fps)
                     bitrate_bps = int(self.config.raw_video_bitrate) * 1000
                     encoder = (
+                        "identity drop-allocation=true ! "
                         "v4l2h264enc extra-controls=\"controls,video_bitrate={:d},h264_i_frame_period={:d};\""
                         ).format(bitrate_bps, fps)
 
