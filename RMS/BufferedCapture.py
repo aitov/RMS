@@ -1328,13 +1328,12 @@ class BufferedCapture(Process):
                 "{:s} ! {:s}{:s}tee name=t"
                 ).format(source_element, input_caps_str, video_convert)
 
-            # Branch for processing: no decoder needed, raw frames just go through the
-            # optional scale/crop, then get converted to the requested output format.
+            # Branch for processing: queue for buffer (actual for sd cards and freases), no decoder needed
+            # raw frames just go through the optional scale/crop
             processing_branch = (
                 "t. ! queue leaky=downstream max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! {:s}{:s}"
-                "{:s}"
-                "appsink max-buffers={:d} drop=true sync=0 name=appsink"
-                ).format(queue_size, video_scale, video_crop, video_convert, queue_size, queue_size)
+                "appsink max-buffers=2 drop=true sync=0 name=appsink"
+                ).format(queue_size, video_scale, video_crop, queue_size)
 
             # Branch for storage - raw frames are compressed before muxing to mp4, since
             # saving uncompressed raw video would use excessive disk space.
