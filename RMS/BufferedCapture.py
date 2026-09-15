@@ -1342,20 +1342,20 @@ class BufferedCapture(Process):
             if video_file_dir is not None:
                 self.raw_container_ext = "mp4"
 
-                if is_rpi4:
-                    log.info("Using RPi 4 hardware H.264 mp4 encoder")
-                    fps = int(self.config.fps)
-                    bitrate_bps = int(self.config.raw_video_bitrate) * 1000
-                    encoder = (
-                        "identity drop-allocation=true ! "
-                        "v4l2h264enc extra-controls=\"controls,video_bitrate={:d},h264_i_frame_period={:d};\""
-                        ).format(bitrate_bps, fps)
-
-                else:
-                    log.info("Using RPi 5 software H.264 mp4 encoder")
-                    encoder = (
-                        "x264enc speed-preset=ultrafast tune=zerolatency bframes=0 threads=1 bitrate={:d}"
-                        ).format(int(self.config.raw_video_bitrate))
+                # if is_rpi4:
+                #     log.info("Using RPi 4 hardware H.264 mp4 encoder")
+                #     fps = int(self.config.fps)
+                #     bitrate_bps = int(self.config.raw_video_bitrate) * 1000
+                #     encoder = (
+                #         "identity drop-allocation=true ! "
+                #         "v4l2h264enc extra-controls=\"controls,video_bitrate={:d},h264_i_frame_period={:d};\""
+                #         ).format(bitrate_bps, fps)
+                #
+                # else:
+                log.info("Using RPi 5 software H.264 mp4 encoder")
+                encoder = (
+                    "x264enc speed-preset=ultrafast tune=zerolatency bframes=0 threads=1 bitrate={:d}"
+                    ).format(int(self.config.raw_video_bitrate))
 
                 storage_branch = (
                     "t. ! queue leaky=downstream max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! "
