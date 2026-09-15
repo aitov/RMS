@@ -1354,6 +1354,7 @@ class BufferedCapture(Process):
                 else:
                     log.info("Using RPi 5 software H.264 mp4 encoder")
                     encoder = (
+                        "videoconvert ! video/x-raw,format=I420 ! "
                         "x264enc speed-preset=ultrafast tune=zerolatency bframes=0 threads=1 bitrate={:d}"
                         ).format(int(self.config.raw_video_bitrate))
 
