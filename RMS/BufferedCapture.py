@@ -1316,7 +1316,7 @@ class BufferedCapture(Process):
 
             video_convert = (
                 "videoconvert ! video/x-raw,format={:s} !"
-            ).format(video_format)
+                ).format(video_format)
 
             # If colorspace is UYVY we don't need convertion to BGR as this format already supported by function handleGrayscaleConversion
             # but for RPi4 we need to add videoconvert to avoid memory allocation issues with large queue sizes (like 100 or 150)
@@ -1343,26 +1343,25 @@ class BufferedCapture(Process):
                 self.raw_container_ext = "mp4"
 
                 if is_rpi4:
-                    log.info("Using RPi 4 hardware H.264 mp4 storage pipeline")
+                    log.info("Using RPi 4 hardware H.264 mp4 encoder")
                     fps = int(self.config.fps)
                     bitrate_bps = int(self.config.raw_video_bitrate) * 1000
-                    storage_branch = (
-                        "t. ! queue leaky=downstream max-size-buffers=30 max-size-bytes=0 max-size-time=0 ! "
-                        "v4l2convert ! video/x-raw,format=I420 ! "
-                        "queue max-size-buffers=3 leaky=downstream ! "
-                        "v4l2h264enc extra-controls=\"controls,h264_profile=4,video_bitrate={:d},h264_i_frame_period={:d};\" ! h264parse ! "
-                        "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
-                        ).format(bitrate_bps, fps, int(segment_duration_sec*1e9))
-                else:
-                    log.info("Using RPi 5 software H.264 mp4 storage pipeline")
-                    storage_branch = (
-                        "t. ! queue leaky=downstream max-size-buffers=30 max-size-bytes=0 max-size-time=0 ! "
-                        "videoconvert ! video/x-raw,format=I420 ! "
-                        "queue max-size-buffers=3 leaky=downstream ! " 
-                        "x264enc speed-preset=ultrafast tune=zerolatency bframes=0 threads=1 bitrate={:d} ! h264parse ! "
-                        "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
-                        ).format(int(self.config.raw_video_bitrate), int(segment_duration_sec*1e9))
+                    encoder = (
+                        "v4l2h264enc extra-controls=\"controls,video_bitrate={:d},h264_i_frame_period={:d};\""
+                        ).format(bitrate_bps, fps)
 
+                else:
+                    log.info("Using RPi 5 software H.264 mp4 encoder")
+                    encoder = (
+                        "x264enc speed-preset=ultrafast tune=zerolatency bframes=0 threads=1 bitrate={:d}"
+                        ).format(int(self.config.raw_video_bitrate))
+
+                storage_branch = (
+                    "t. ! queue leaky=downstream max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! "
+                    "videoconvert ! video/x-raw,format=I420 ! "
+                    "{:s} ! h264parse ! "
+                    "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
+                    ).format(queue_size, encoder, fps, int(segment_duration_sec * 1e9))
             else:
                 storage_branch = ""
 
