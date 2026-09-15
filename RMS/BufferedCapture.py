@@ -1321,12 +1321,13 @@ class BufferedCapture(Process):
 
             video_convert = (
                 "videoconvert ! video/x-raw,format={:s} !"
-                "queue max-size-buffers={:d} max-size-bytes=0 max-size-time=0 !  "
-            ).format(video_format, queue_size)
+            ).format(video_format)
 
-
-            # for UYVY videoconvert is skipped as it supported same as for BGR
-            video_convert = "" if self.config.gst_colorspace == 'UYVY' else video_convert
+            # If colorspace is UYVY we don't convertion to BGR as this format already supported by handleGrayscaleConversion
+            # but for RPi4 we need to add videoconvert to avoid memory allocation issues with large queue sizes (like 100 or 150)
+            # To force use RAM instead of GPU memory, we will add videoconvert with  UYVY -> UYVY.
+            # For RRi5 we skip this step if colorspace is UYVY as it working without memory issues.
+            video_convert = ""  if not is_rpi4 and self.config.gst_colorspace == 'UYVY' else video_convert
 
             # Branch for processing: no decoder needed, raw frames just go through the
             # optional scale/crop, then get converted to the requested output format.
