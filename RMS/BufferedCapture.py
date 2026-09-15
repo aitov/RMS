@@ -1359,7 +1359,6 @@ class BufferedCapture(Process):
 
                 storage_branch = (
                     "t. ! queue leaky=downstream max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! "
-                    "videoconvert ! video/x-raw,format=I420 ! "
                     "{:s} ! h264parse ! "
                     "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
                     ).format(queue_size, encoder, int(segment_duration_sec * 1e9))
