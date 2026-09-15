@@ -39,7 +39,6 @@ import socket
 import errno
 import json
 
-from keras.src.layers.core import identity
 
 from RMS.Misc import obfuscatePassword, getRaspberryPiModel
 from RMS.Routines.GstreamerCapture import GstVideoFile, getStructureValue
