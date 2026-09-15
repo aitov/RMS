@@ -1314,16 +1314,15 @@ class BufferedCapture(Process):
             # directly out of the device string, if any were given.
             input_caps_str = "{:s} ! ".format(parsed_input_caps) if parsed_input_caps else ""
 
-            indetity = "identity single-segment=true ! " if is_rpi4 else ""
             source_to_tee = (
-                "{:s} ! {:s}{:s}tee name=t"
-                ).format(source_element, input_caps_str, indetity)
+                "{:s} ! {:s}tee name=t"
+                ).format(source_element, input_caps_str)
 
             video_convert = (
                 "videoconvert ! video/x-raw,format={:s} !"
             ).format(video_format)
 
-            # If colorspace is UYVY we don't convertion to BGR as this format already supported by handleGrayscaleConversion
+            # If colorspace is UYVY we don't convertion to BGR as this format already supported by function handleGrayscaleConversion
             # but for RPi4 we need to add videoconvert to avoid memory allocation issues with large queue sizes (like 100 or 150)
             # To force use RAM instead of GPU memory, we will add videoconvert with  UYVY -> UYVY.
             # For RRi5 we skip this step if colorspace is UYVY as it working without memory issues.
