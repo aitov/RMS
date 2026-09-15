@@ -1361,7 +1361,7 @@ class BufferedCapture(Process):
                     "videoconvert ! video/x-raw,format=I420 ! "
                     "{:s} ! h264parse ! "
                     "splitmuxsink name=splitmuxsink0 async-finalize=true max-size-time={:d} muxer-factory=mp4mux"
-                    ).format(queue_size, encoder, fps, int(segment_duration_sec * 1e9))
+                    ).format(queue_size, encoder, int(segment_duration_sec * 1e9))
             else:
                 storage_branch = ""
 
