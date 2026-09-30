@@ -1853,8 +1853,7 @@ if __name__ == "__main__":
         # Run capture and compression
         night_archive_dir = runCapture(config, duration=duration, nodetect=cml_args.nodetect, \
             upload_manager=upload_manager, eventmonitor=eventmonitor, detect_end=(cml_args.detectend or config.postprocess_at_end), \
-            resume_capture=cml_args.resume, daytime_mode=daytime_mode, camera_mode_switch_trigger=camera_mode_switch_trigger,
-                         event_video_queue=event_video_queue)
+            resume_capture=cml_args.resume, daytime_mode=daytime_mode, camera_mode_switch_trigger=camera_mode_switch_trigger)
         cml_args.resume = False
 
         # Indicate that the capture was done once
