@@ -1345,9 +1345,12 @@ class BufferedCapture(Process):
 
             # directly out of the device string, if any were given.
             input_caps_str = "{:s} ! ".format(parsed_input_caps) if parsed_input_caps else ""
+            # On RPi4 drop the allocation query so the v4l2 capture buffers are not pinned by the
+            # downstream pools
+            identity = "identity drop-allocation=true ! " if is_rpi4 else ""
             video_convert = (
-                "videoconvert ! video/x-raw,format={:s} ! "
-                ).format(video_format)
+                "{:s}videoconvert ! video/x-raw,format={:s} ! "
+                ).format(identity, video_format)
 
             # If colorspace is UYVY we don't need convertion to BGR as this format already supported by function handleGrayscaleConversion
             # but for RPi4 we need to add videoconvert to avoid memory allocation issues with large queue sizes (like 100 or 150)
@@ -1361,10 +1364,13 @@ class BufferedCapture(Process):
 
             # Branch for processing: queue for buffer (actual for sd cards and freases), no decoder needed
             # raw frames just go through the optional scale/crop
+            # The queue already provides the buffering. On RPi4 the appsink must stay small: every buffer
+            # held there (like in the queue) pins a v4l2 capture buffer, and doubling the held frames
+            # exhausts the CMA pool ("failed to allocate buffer", lost frames).
             processing_branch = (
                 "t. ! queue leaky=downstream max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! {:s}{:s}"
                 "appsink max-buffers={:d} drop=true sync=0 name=appsink"
-                ).format(queue_size, video_scale, video_crop, queue_size, queue_size)
+                ).format(queue_size, video_scale, video_crop, 2 if is_rpi4 else queue_size)
 
             # Branch for storage - raw frames are compressed before muxing to mp4, since
             # saving uncompressed raw video would use excessive disk space.
@@ -1378,6 +1384,7 @@ class BufferedCapture(Process):
                     fps = int(self.config.fps)
                     bitrate_bps = int(self.config.raw_video_bitrate) * 1000
                     encoder = (
+                        "identity drop-allocation=true ! "
                         "v4l2h264enc extra-controls=\"controls,video_bitrate={:d},h264_i_frame_period={:d};\""
                         ).format(bitrate_bps, fps)
 
