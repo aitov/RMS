@@ -608,6 +608,35 @@ class BufferedCapture(Process):
         return smoothed_pts
 
 
+    def logGstBufferDiagnostics(self, buffer, pts_ns):
+        """ Diagnose what the "dropped frames" counter is really seeing (only used when
+        report_dropped_frames is on). Compares the raw PTS gap against the source's own frame sequence
+        number (v4l2src sets it in buffer.offset) and the DISCONT flag: a PTS gap without a sequence gap
+        means a late delivery (scheduling/pool starvation), not a frame lost by the camera/driver.
+
+        Arguments:
+            buffer: [Gst.Buffer] Buffer pulled from the appsink.
+            pts_ns: [int] Raw PTS of the buffer in nanoseconds.
+        """
+
+        last_pts = getattr(self, '_diag_last_pts', None)
+        last_offset = getattr(self, '_diag_last_offset', None)
+
+        offset = buffer.offset if buffer.offset != Gst.BUFFER_OFFSET_NONE else None
+        discont = buffer.has_flags(Gst.BufferFlags.DISCONT)
+
+        if last_pts is not None:
+            pts_gap_frames = (pts_ns - last_pts)/1e9*self.config.fps
+            seq_gap = (offset - last_offset - 1) if (offset is not None) and (last_offset is not None) else None
+
+            if (pts_gap_frames >= 1.5) or discont or (seq_gap):
+                log.info("Gst diag: raw PTS gap %.2f frames, sequence gap %s, DISCONT %s", pts_gap_frames,
+                         "n/a" if seq_gap is None else str(seq_gap), discont)
+
+        self._diag_last_pts = pts_ns
+        self._diag_last_offset = offset
+
+
     def read(self):
         """ Retrieve frames and timestamp.
 
@@ -651,6 +680,9 @@ class BufferedCapture(Process):
                 if not (0 < gst_timestamp_ns <= max_expected_ns):
                     log.info("Unexpected PTS value: {}.".format(gst_timestamp_ns))
                     return False, None, None
+
+                if self.config.report_dropped_frames:
+                    self.logGstBufferDiagnostics(buffer, gst_timestamp_ns)
 
                 ret, map_info = buffer.map(Gst.MapFlags.READ)
                 if not ret:
