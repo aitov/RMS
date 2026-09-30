@@ -47,6 +47,8 @@ from RMS.RawFrameSave import RawFrameSaver
 from RMS.Misc import RmsDateTime, mkdirP, UTCFromTimestamp, frameBufferShape, runWithTimeout, AtomicFlag
 from RMS.Formats import FTfile, FTStruct
 from RMS.Logger import LoggingManager, getLogger, gstDebugLogger, getLoggingQueue, initChildProcess
+from RMS.EventVideoManager import EventVideoManager, processEventVideoMessages, buildRingBranch, \
+    buildEventEncoder
 from RMS.CaptureModeSwitcher import switchCameraMode
 import Utils.CameraControl as cc
 
@@ -190,7 +192,8 @@ class BufferedCapture(Process):
     running = False
     
     def __init__(self, array1, start_time1, array2, start_time2, config, video_file=None, night_data_dir=None,
-                 saved_frames_dir=None, daytime_mode=None, camera_mode_switch_trigger=None):
+                 saved_frames_dir=None, daytime_mode=None, camera_mode_switch_trigger=None,
+                 event_video_queue=None):
         """ Populate arrays with (startTime, frames) after startCapture is called.
         
         Arguments:
@@ -294,6 +297,9 @@ class BufferedCapture(Process):
         # under the 'forkserver'/'spawn' start methods (handlers are not inherited there)
         self.logging_queue = getLoggingQueue()
 
+        # Queue (created by the parent) on which the extractor reports detections for event videos
+        self.event_video_queue = event_video_queue
+        self.event_video_manager = None
 
     def startCapture(self, cameraID=0):
         """ Start capture using specified camera.
@@ -1244,6 +1250,7 @@ class BufferedCapture(Process):
                             "'top=N bottom=N left=N right=N', non-negative ints)", self.config.video_crop)
 
         queue_size = self.config.gst_queue_size
+        event_video_enabled = getattr(self.config, 'event_video_save', False)
 
         if is_rtsp:
             device_url = self.extractRtspUrl(self.config.deviceID)
@@ -1280,6 +1287,8 @@ class BufferedCapture(Process):
                 ).format(gst_decoder, queue_size, video_scale, video_crop, video_format, queue_size, queue_size)
 
             # Branch for storage - if video_file_dir is not None, save the raw stream to a file
+            event_storage_branch = ""
+
             if video_file_dir is not None:
 
                 # The video will be split into segments of segment_duration_sec seconds
@@ -1297,9 +1306,14 @@ class BufferedCapture(Process):
             else:
                 storage_branch = ""
 
+            # The stream is already H.264: the event ring buffer just keeps the encoded access units
+            if event_video_enabled:
+                event_storage_branch = buildRingBranch(self.config, queue_size=queue_size)
+
         else:
             rpi_model = getRaspberryPiModel()
             is_rpi4 = bool(rpi_model and 'raspberry pi 4' in rpi_model.lower())
+            event_storage_branch = ""
 
             # Local/MIPI raw device via v4l2src or libcamerasrc
             # The device already produces uncompressed
@@ -1364,8 +1378,14 @@ class BufferedCapture(Process):
             else:
                 storage_branch = ""
 
+            # Raw source: an encoder feeds the in-memory ring buffer (nothing is written to disk)
+            if event_video_enabled:
+                event_storage_branch = buildRingBranch(
+                    self.config, event_encoder=buildEventEncoder(self.config, is_rpi4), queue_size=queue_size)
+
          # Combine all parts of the pipeline
-        pipeline_str = "{:s} {:s} {:s}".format(source_to_tee, processing_branch, storage_branch)
+        pipeline_str = "{:s} {:s} {:s} {:s}".format(
+            source_to_tee, processing_branch, storage_branch, event_storage_branch)
 
         # Obfuscate the password in the pipeline string before logging
         obfuscated_pipeline_str = obfuscatePassword(pipeline_str)
@@ -1397,6 +1417,10 @@ class BufferedCapture(Process):
                     
                     splitmuxsink = self.pipeline.get_by_name("splitmuxsink0")
                     splitmuxsink.connect("format-location-full", self.moveSegment)
+
+                if event_video_enabled:
+                    self.event_video_manager = EventVideoManager(self)
+                    self.event_video_manager.bind(self.pipeline)
 
                 # Transition through states
                 log.info("Starting pipeline state transitions...")
@@ -1774,6 +1798,13 @@ class BufferedCapture(Process):
                     splitmuxsink.disconnect_by_func(self.moveSegment)
             except Exception as e:
                 log.debug("releaseResources: Error disconnecting signals: %s", e)
+
+            if self.event_video_manager:
+                try:
+                    self.event_video_manager.unbind()
+                except Exception as e:
+                    log.debug("releaseResources: Error unbinding event video manager: %s", e)
+                self.event_video_manager = None
             
             bus = self.pipeline.get_bus()
             
@@ -2282,6 +2313,9 @@ class BufferedCapture(Process):
 
                 # Handling for grayscale conversion
                 frame = self.handleGrayscaleConversion(frame)
+
+                if self.video_device_type == "gst":
+                    processEventVideoMessages(self)
 
 
 

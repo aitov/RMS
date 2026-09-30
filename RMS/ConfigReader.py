@@ -230,6 +230,16 @@ class Config:
         # Whether to run the one-time camera setup defined in camera_settings.json
         self.initialize_camera = False
 
+        # Toggle saving event videos extracted by VideoExtraction in data_dir/video_dir
+        self.event_video_save = False
+
+        # Seconds of encoded video kept in memory before an event is detected (must exceed the 256-frame
+        # block duration plus the extraction time)
+        self.event_video_preroll = 60.0
+
+        # Seconds of video saved after the end of an event
+        self.event_video_tail = 5.0
+
         # Toggle raw video saving in data_dir/video_dir
         self.raw_video_save = False
 
@@ -1150,6 +1160,15 @@ def parseCapture(config, parser):
 
     if parser.has_option(section, "raw_video_save"):
         config.raw_video_save = parser.getboolean(section, "raw_video_save")
+
+    if parser.has_option(section, "event_video_save"):
+        config.event_video_save = parser.getboolean(section, "event_video_save")
+
+    if parser.has_option(section, "event_video_preroll"):
+        config.event_video_preroll = parser.getfloat(section, "event_video_preroll")
+
+    if parser.has_option(section, "event_video_tail"):
+        config.event_video_tail = parser.getfloat(section, "event_video_tail")
 
     if parser.has_option(section, "raw_video_duration"):
         config.raw_video_duration = parser.getfloat(section, "raw_video_duration")

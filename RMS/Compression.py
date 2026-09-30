@@ -55,7 +55,8 @@ class Compressor(multiprocessing.Process):
 
     running = False
     
-    def __init__(self, data_dir, array1, start_time1, array2, start_time2, config, detector=None):
+    def __init__(self, data_dir, array1, start_time1, array2, start_time2, config, detector=None,
+            event_video_queue=None):
         """
 
         Arguments:
@@ -69,6 +70,8 @@ class Compressor(multiprocessing.Process):
         Keyword arguments:
             detector: [Detector object] Handle to Detector object used for running star extraction and
                 meteor detection.
+            event_video_queue: [multiprocessing.Queue] Queue on which the extractor reports detections
+                to the capture process for event videos. Optional.
 
         """
         
@@ -87,6 +90,7 @@ class Compressor(multiprocessing.Process):
         self.config = config
 
         self.detector = detector
+        self.event_video_queue = event_video_queue
 
         # Lock-free flags: these are set/polled across processes and must never be able to
         # deadlock, even if a process sharing them is killed (see AtomicFlag)
@@ -430,7 +434,8 @@ class Compressor(multiprocessing.Process):
             if self.config.enable_fireball_detection:
                 frames_base = self.array1_base if buffer_one else self.array2_base
                 extractor = Extractor(self.config, self.data_dir)
-                extractor.start(frames_base, frames.shape, compressed, filename_millis)
+                extractor.ff_start_timestamp = startTime
+                extractor.start(frames_base, frames.shape, compressed, filename_millis, self.event_video_queue)
 
                 log.debug('Extractor started for: ' + filename_millis)
 

@@ -594,6 +594,10 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
     sharedArray = sharedArrayBase
     startTime = multiprocessing.Value('d', 0.0, lock=False)
 
+    # Queue for extractor -> capture event-video commands. Created here (in the parent) so that both
+    # children share it and it survives BufferedCapture watchdog restarts.
+    event_video_queue = multiprocessing.Queue() if getattr(config, 'event_video_save', False) else None
+
     sharedArrayBase2 = multiprocessing.Array(ctypes.c_uint8, frame_buffer_len)
     sharedArray2 = sharedArrayBase2
     start_time2 = multiprocessing.Value('d', 0.0, lock=False)
@@ -604,7 +608,8 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
     # Initialize buffered capture
     bc = BufferedCapture(sharedArray, startTime, sharedArray2, start_time2, config, video_file=video_file,
                          night_data_dir=night_data_dir, saved_frames_dir=saved_frames_dir, 
-                         daytime_mode=daytime_mode, camera_mode_switch_trigger=camera_mode_switch_trigger)
+                         daytime_mode=daytime_mode, camera_mode_switch_trigger=camera_mode_switch_trigger,
+                         event_video_queue=event_video_queue)
     bc.startCapture()
 
     # To track and make new directories every iteration
@@ -702,7 +707,8 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
                     bc = BufferedCapture(sharedArray, startTime, sharedArray2, start_time2, config,
                                          video_file=video_file, night_data_dir=night_data_dir,
                                          saved_frames_dir=saved_frames_dir, daytime_mode=daytime_mode,
-                                         camera_mode_switch_trigger=camera_mode_switch_trigger)
+                                         camera_mode_switch_trigger=camera_mode_switch_trigger,
+                                         event_video_queue=event_video_queue)
                     bc.startCapture()
 
                     log.info('WATCHDOG: BufferedCapture restarted successfully')
@@ -794,7 +800,7 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
 
             # Initialize compression
             compressor = Compressor(night_data_dir, sharedArray, startTime, sharedArray2, start_time2, config,
-                detector=detector)
+                detector=detector, event_video_queue=event_video_queue)
 
             # Open the observation summary report
             if video_file is None:
@@ -850,7 +856,8 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
                     bc = BufferedCapture(sharedArray, startTime, sharedArray2, start_time2, config,
                                          video_file=video_file, night_data_dir=night_data_dir,
                                          saved_frames_dir=saved_frames_dir, daytime_mode=daytime_mode,
-                                         camera_mode_switch_trigger=camera_mode_switch_trigger)
+                                         camera_mode_switch_trigger=camera_mode_switch_trigger,
+                                         event_video_queue=event_video_queue)
                     bc.startCapture()
 
                     log.info('WATCHDOG: BufferedCapture restarted successfully, capture continuing')
@@ -1846,7 +1853,8 @@ if __name__ == "__main__":
         # Run capture and compression
         night_archive_dir = runCapture(config, duration=duration, nodetect=cml_args.nodetect, \
             upload_manager=upload_manager, eventmonitor=eventmonitor, detect_end=(cml_args.detectend or config.postprocess_at_end), \
-            resume_capture=cml_args.resume, daytime_mode=daytime_mode, camera_mode_switch_trigger=camera_mode_switch_trigger)
+            resume_capture=cml_args.resume, daytime_mode=daytime_mode, camera_mode_switch_trigger=camera_mode_switch_trigger,
+                         event_video_queue=event_video_queue)
         cml_args.resume = False
 
         # Indicate that the capture was done once

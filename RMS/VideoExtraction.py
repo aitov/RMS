@@ -156,6 +156,32 @@ class Extractor(Process):
     
 
 
+    def getFrameRange(self, firstFrame, lastFrame):
+        """ Pad the detected frame range with the frames before and after the meteor.
+
+        Arguments:
+            firstFrame: [int] First frame with a detection.
+            lastFrame: [int] Last frame with a detection.
+
+        Return:
+            (firstFrame, lastFrame): [tuple of ints] Padded range, clipped to the frame block.
+        """
+
+        firstFrame = int(firstFrame)
+        lastFrame = int(lastFrame)
+
+        diff = lastFrame - firstFrame
+
+        # Extrapolate before first detected point, but take at least 4 frames
+        firstFrame = max(firstFrame - int(max(math.ceil(diff*self.config.before), 4)), 0)
+
+        # Extrapolate after last detected point, but take at least 4 frames
+        lastFrame = min(lastFrame + int(max(math.ceil(diff*self.config.after), 4)), self.frames.shape[0] - 1)
+
+        return firstFrame, lastFrame
+
+
+
     def extract(self, coefficients):
         """ Determinate window size and crop out frames.
         
@@ -174,37 +200,7 @@ class Extractor(Process):
             slopeXZ = float(slopeXZ)
             slopeYZ = float(slopeYZ)
 
-            firstFrame = int(firstFrame)
-            lastFrame = int(lastFrame)
-            
-            diff = lastFrame - firstFrame
-
-            
-            # Extrapolate before first detected point
-            before_frames = math.ceil(diff*self.config.before)
-
-            # Make sure at least 4 frames before are taken
-            if before_frames < 4:
-                before_frames = 4
-
-            firstFrame = firstFrame - before_frames
-
-            if firstFrame < 0:
-                firstFrame = 0
-
-
-            # Extrapolate after last detected point
-            after_frames = math.ceil(diff*self.config.after) 
-
-            # Make sure at least 4 frames after are taken
-            if after_frames < 4:
-                after_frames = 4
-
-            lastFrame = lastFrame + after_frames
-
-            if lastFrame >= self.frames.shape[0]:
-                lastFrame = self.frames.shape[0] - 1
-                
+            firstFrame, lastFrame = self.getFrameRange(firstFrame, lastFrame)
 
             # Cut of the fireball from raw video frames
             length, cropouts, sizepos = Grouping3D.detectionCutOut(self.frames, self.compressed, 
@@ -242,7 +238,7 @@ class Extractor(Process):
         
 
 
-    def start(self, frames_base, frames_shape, compressed, filename):
+    def start(self, frames_base, frames_shape, compressed, filename, event_video_queue=None):
         """ Start the extractor.
 
         Arguments:
@@ -255,6 +251,8 @@ class Extractor(Process):
             frames_shape: [tuple] Shape (256, H, W) to rebuild the numpy view.
             compressed: [ndarray] array with FTP compressed frames
             filename: [str] name of the FF file which is being processed
+            event_video_queue: [multiprocessing.Queue] queue for sending start/stop
+                event-video commands to BufferedCapture. Optional.
 
         """
         
@@ -265,6 +263,7 @@ class Extractor(Process):
         self.frames = None      # numpy view rebuilt in run() (per-process)
         self.compressed = compressed
         self.filename = filename
+        self.event_video_queue = event_video_queue
         
         super(Extractor, self).start()
     
@@ -290,6 +289,8 @@ class Extractor(Process):
 
     def executeAll(self):
         """ Run the complete extraction procedure. """
+
+        ff_start_timestamp = getattr(self, 'ff_start_timestamp', None)
 
         # Apply the mask to the compressed frames (maxpixel, avepixel)
         if self.mask is not None:
@@ -345,4 +346,35 @@ class Extractor(Process):
         # Save the extracted clips
         self.save(clips)
 
+        self.reportEventVideo(coeff, ff_start_timestamp)
+
         log.debug("[" + self.filename + "] Time for saving: " + str(time.time() - t) + "s")
+
+
+
+    def reportEventVideo(self, coeff, ff_start_timestamp):
+        """ Tell the capture process which time range should be saved as a full-frame colour event video.
+
+        Arguments:
+            coeff: [list] Line coefficients of the detected meteors.
+            ff_start_timestamp: [float] Timestamp of the first frame of the block.
+        """
+
+        if not (getattr(self.config, 'event_video_save', False) and (self.event_video_queue is not None) \
+                and (ff_start_timestamp is not None)):
+            return
+
+        # One video covers all detections in the block
+        ranges = [self.getFrameRange(first, last) for _, _, _, first, last in coeff]
+        first_frame = min(r[0] for r in ranges)
+        last_frame = max(r[1] for r in ranges)
+
+        self.event_video_queue.put({
+            'command': 'meteor_detected',
+            'filename': self.filename,
+            'start_time': ff_start_timestamp + first_frame/float(self.config.fps),
+            'end_time': ff_start_timestamp + (last_frame + 1)/float(self.config.fps),
+
+            # The event reaches the end of the block, so it may continue in the next FF file
+            'touches_end': last_frame >= self.frames.shape[0] - 1,
+            })
